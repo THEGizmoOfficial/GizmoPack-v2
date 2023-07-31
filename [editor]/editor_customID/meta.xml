@@ -1,0 +1,18 @@
+<meta>
+    <info author="Fernando (Edit by THEGizmo)" name="Editor tool for GizmoPack v2" version="3.1.0" type="script" />
+
+    <!-- Required resource -->
+    <include resource="GizmoPack_v2" />
+    <include resource="editor_engine" />
+
+    <!-- Main script -->
+    <script src="server.lua" type="server" />
+
+    <!-- ACL permissions that this resource requires -->
+    <aclrequest>
+        <right name="general.ModifyOtherObjects" access="true" />
+        <right name="function.restartResource" access="true" />
+        <right name="function.startResource" access="true" />
+        <right name="function.stopResource" access="true" />
+    </aclrequest>
+</meta>

@@ -1,0 +1,14 @@
+<meta>
+    <info author="Fernando (Edit by THEGizmo)" name="Editor engine for GizmoPack v2" version="3.1.0" type="script" />
+
+    <!-- Required resource GizmoPack v2 -->
+    <include resource="GizmoPack_v2" />
+
+    <!-- Main Script -->
+    <script src="shared.lua" type="shared" cache="false" />
+
+    <!-- Exported Functions -->
+    <export function="createObject" type="shared" />
+    <export function="setElementModel" type="shared" />
+    <export function="getElementModel" type="shared" />
+</meta>

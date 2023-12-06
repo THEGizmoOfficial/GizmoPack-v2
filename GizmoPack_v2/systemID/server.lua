@@ -2,14 +2,16 @@
     @Author: https://github.com/Fernando-A-Rocha (Edit by THEGizmo)
 ]]--
 
---Internal events:
-addEvent("onDownloadFailed", true)
+resName = "GizmoPack_v2"
 
-local resName = "GizmoPack_v2"
+--Internal events:
+addEvent(resName..":onDownloadFailed", true)
+
 local SERVER_READY = false
 local startTickCount = nil
 local SEND_DELAY = 5000
 local clientsWaiting = {}
+local loadedPlayers = {}
 
 local prevent_addrem_spam = {
 	add = {},
@@ -17,6 +19,52 @@ local prevent_addrem_spam = {
 	rem = {},
 	remtimer = {},
 }
+
+--Goal: solve the issue of handling resetting every time the vehicle's model is changed serverside/clientside
+if DATANAME_VEH_HANDLING then
+	function onSetVehicleHandling(sourceResource, functionName, isAllowedByACL, luaFilename, luaLineNumber, ...)
+		if sourceResource == resource then
+			return
+		end
+		local args = {...}
+		local theVehicle, property, value = unpack(args)
+		if not isCustomVehicle(theVehicle) then return end
+		--https://wiki.multitheftauto.com/wiki/SetVehicleHandling
+		--Configuration resets not supported, only normal property-value setting
+		if not property then return end
+		local savedHandling = getElementData(theVehicle, DATANAME_VEH_HANDLING) or {}
+		savedHandling[property] = value
+		setElementData(theVehicle, DATANAME_VEH_HANDLING, savedHandling, true)
+	end
+	addDebugHook("postFunction", onSetVehicleHandling, {"setVehicleHandling"})
+end
+
+--Goal: solve the issue of upgrades resetting every time the vehicle's model is changed serverside/clientside
+if DATANAME_VEH_UPGRADES then
+	function onVehicleUpgradesChanged(sourceResource, functionName, isAllowedByACL, luaFilename, luaLineNumber, ...)
+		if sourceResource == resource then
+			return 
+		end
+		local args = {...}
+		local theVehicle = unpack(args)
+		if not isCustomVehicle(theVehicle) then return end
+		setElementData(theVehicle, DATANAME_VEH_UPGRADES, getVehicleUpgrades(theVehicle), true)
+	end
+	addDebugHook("postFunction", onVehicleUpgradesChanged, {"addVehicleUpgrade", "removeVehicleUpgrade"})
+end
+
+if DATANAME_VEH_PAINTJOB then
+	function onVehiclePaintjobChanged(sourceResource, functionName, isAllowedByACL, luaFilename, luaLineNumber, ...)
+		if sourceResource == resource then
+			return 
+		end
+		local args = {...}
+		local theVehicle = unpack(args)
+		if not isCustomVehicle(theVehicle) then return end
+		setElementData(theVehicle, DATANAME_VEH_PAINTJOB, getVehiclePaintjob(theVehicle), true)
+	end
+	addDebugHook("postFunction", onVehiclePaintjobChanged, {"setVehiclePaintjob"})
+end
 
 function getModList() --[Exported - Server Version]
 	if not SERVER_READY then
@@ -42,14 +90,21 @@ function getModDataFromID(id) --[Exported - Server Version]
 	end
 end
 
-local function fixModList()
+function table.copy(tab, recursive)
+    local ret = {}
+    for key, value in pairs(tab) do
+        if (type(value) == "table") and recursive then ret[key] = table.copy(value)
+        else ret[key] = value end
+    end
+    return ret
+end
 
+local function fixModList()
 	for elementType, mods in pairs(modList) do
 		for k, mod in pairs(mods) do
 			local paths_ = ((type(mod.path)=="table" and mod.path) or (getActualModPaths(mod.path, mod.id)))
 			modList[elementType][k].paths = {}
 			modList[elementType][k].readyPaths = {}
-
 			local ignoreTXD, ignoreDFF, ignoreCOL = mod.ignoreTXD, mod.ignoreDFF, mod.ignoreCOL
 			for pathType, path2 in pairs(paths_) do
 				if (pathType == "txd" and ignoreTXD)
@@ -65,23 +120,25 @@ local function fixModList()
 					end
 				end
 			end
-
 			if not mod.metaDownloadFalse then
 				modList[elementType][k].allReady = true
 			end
 		end
 	end
+	modList.player = table.copy(modList.ped, true)
+	modList.pickup = table.copy(modList.object, true)
 	return true
 end
 
 local function modCheckMessage(text)
-	outputServerLog("Startup Verifications: "..text)
+	outputServerLog("["..resName.."] Startup Verifications: "..text)
 	outputDebugString(text, 1)
 end
 
 --verifies modList, because people can fuck up sometimes :)
 function doModListChecks()
 	local corruptedMissing = false
+
 	if (not modList) or (type(modList) ~= "table") then
 		corruptedMissing = true
 		modList = {}
@@ -92,7 +149,6 @@ function doModListChecks()
 			elementType == "player"
 			or elementType == "pickup"
 		) then --exceptions
-
 			local mods1 = modList[elementType]
 			if not mods1 then
 				if not corruptedMissing then
@@ -140,7 +196,7 @@ function doModListChecks()
 				return false
 			end
 			if usedModIds[mod.id] then
-				modCheckMessage("Duplicated mod ID '"..id.."'")
+				modCheckMessage("Duplicated mod ID '"..tostring(mod.id).."'")
 				return false
 			end
 			usedModIds[mod.id] = true
@@ -209,6 +265,7 @@ function doModListChecks()
 					end
 				end
 			end
+
 			--5. verify optional param: metaDownloadFalse
 			if mod.metaDownloadFalse ~= nil and type(mod.metaDownloadFalse) ~= "boolean" then
 				modCheckMessage("Invalid param metaDownloadFalse value '"..tostring(mod.metaDownloadFalse).."' (expected true/false) for mod ID "..mod.id)
@@ -224,9 +281,25 @@ function doModListChecks()
 				modCheckMessage("Invalid param lodDistance value '"..tostring(mod.lodDistance).."' (expected number) for mod ID "..mod.id)
 				return false
 			end
+			--8. verify optional param: filteringEnabled
+			if mod.filteringEnabled ~= nil and type(mod.filteringEnabled) ~= "boolean" then
+				modCheckMessage("Invalid param filteringEnabled value '"..tostring(mod.filteringEnabled).."' (expected true/false) for mod ID "..mod.id)
+				return false
+			end
+			--9. verify optional param: alphaTransparency
+			if mod.alphaTransparency ~= nil and type(mod.alphaTransparency) ~= "boolean" then
+				modCheckMessage("Invalid param alphaTransparency value '"..tostring(mod.alphaTransparency).."' (expected true/false) for mod ID "..mod.id)
+				return false
+			end
+			--10. verify optional param: modelPhysical
+			if mod.modelPhysical ~= nil and type(mod.modelPhysical) ~= "number" then
+				modCheckMessage("Invalid param modelPhysical value '"..tostring(mod.modelPhysical).."' (expected number) for mod ID "..mod.id)
+				return false
+			end
 		end
 	end
-	--8. verify file nodes exist in meta.xml
+
+	--11. verify file nodes exist in meta.xml
 	local metaFile = xmlLoadFile("meta.xml", true)
 	if not metaFile then
 		outputDebugString("STARTUP MOD CHECK: Failed to open meta.xml file", 2)
@@ -263,7 +336,6 @@ end
 addEventHandler("onResourceStart", resourceRoot, function(startedResource)
 	Async:setPriority(ASYNC_PRIORITY)
 	startTickCount = getTickCount()
-
 	if (STARTUP_VERIFICATIONS) then
 		if not doModListChecks() then
 			cancelEvent()
@@ -271,7 +343,7 @@ addEventHandler("onResourceStart", resourceRoot, function(startedResource)
 		end
 	end
 
-	outputDebugString("Startup lasted "..(getTickCount() - startTickCount).."ms, sending mod list to clients")
+	outputDebugString(resName.." startup lasted "..(getTickCount() - startTickCount).."ms, sending mod list to clients", 4, 255, 0, 255)
 
 	for player, _ in pairs(clientsWaiting) do
 		if isElement(player) then
@@ -282,10 +354,48 @@ addEventHandler("onResourceStart", resourceRoot, function(startedResource)
 	clientsWaiting = nil
 	startTickCount = nil
 	SERVER_READY = true
+
+	if #LINKED_RESOURCES > 0 then
+		outputDebugString(resName.." will try to start "..#LINKED_RESOURCES.." resources in "..(SEND_DELAY/1000).."s", 4, 255, 100, 255)
+		setTimer(function()
+			for k, v in ipairs(LINKED_RESOURCES) do
+				local name, start, stop = v.name, v.start, v.stop
+				if type(name)=="string" and start == true then
+					local res = getResourceFromName(name)
+					if res and getResourceState(res) == "loaded" then
+						if not startResource(res) then
+							outputDebugString("Failed to start resource '"..name.."' on "..resName.." res-start")
+						else
+							outputDebugString("Started resource '"..name.."' on "..resName.." res-start")
+						end
+					end
+				end
+			end
+		end, SEND_DELAY, 1)
+	end
 end)
 
 addEventHandler("onResourceStop", resourceRoot, function(stoppedResource, wasDeleted)
 	local willStart = {}
+	for k, v in ipairs(LINKED_RESOURCES) do
+		local name, start, stop = v.name, v.start, v.stop
+		if type(name)=="string" then
+			local res = getResourceFromName(name)
+			if res and getResourceState(res) == "running" then
+				if start == true then
+					willStart[name] = true
+				end
+				if stop == true then
+					if not stopResource(res) then
+						outputDebugString("Failed to stop resource '"..name.."' on "..resName.." res-stop")
+					else
+						outputDebugString("Stopped resource '"..name.."' on "..resName.." res-stop")
+					end
+				end
+			end
+		end
+	end
+
 	local notified = {}
 	for elementType,mods in pairs(modList) do
 		for k,mod in pairs(mods) do
@@ -293,7 +403,7 @@ addEventHandler("onResourceStop", resourceRoot, function(stoppedResource, wasDel
 			if srcRes then
 				local res = getResourceFromName(srcRes)
 				if res and not notified[srcRes] and not willStart[srcRes] then
-					outputDebugString("Resource '"..srcRes.."' needs to be restarted because '"..resName.."' stopped", 0, 211, 255, 0)
+					outputDebugString("Resource '"..srcRes.."' needs to be restarted because '"..resName.."' stopped", 4, 211, 255, 0)
 					notified[srcRes] = true
 				end
 			end
@@ -319,15 +429,15 @@ addEventHandler("onResourceStop", root, function(stoppedResource, wasDeleted)
 	end
 
 	if delCount > 0 then
-		outputDebugString("Removed "..delCount.." mods because resource '"..stoppedResName.."' stopped", 0, 211, 255, 89)
+		outputDebugString("Removed "..delCount.." mods because resource '"..stoppedResName.."' stopped", 4, 211, 255, 89)
 		fixModList()
 		setTimer(sendModListAllPlayers, 1000, 1, "onResourceStop")
 	end
 end)
 
 function sendModList(player, fromName)
-	triggerClientEvent(player, "receiveModList", resourceRoot, modList)
-	--outputDebugString("Sent mod list to "..getPlayerName(player).." | "..fromName, 0, 211, 255, 89)
+	triggerClientEvent(player, resName..":receiveModList", resourceRoot, modList)
+	--outputDebugString("Sent mod list to "..getPlayerName(player).." | "..fromName, 4, 211, 255, 89)
 end
 
 function sendModListAllPlayers(fromName)
@@ -344,16 +454,30 @@ end
 
 function requestModList(res)
 	if res ~= resource then return end
+	for i, v in ipairs(loadedPlayers) do
+		if v == source then
+			return
+		end
+	end
 	if SERVER_READY then
 		sendModList(source, "requestModList")
 	else
 		clientsWaiting[source] = true
 	end
+	table.insert(loadedPlayers, source)
 end
 addEventHandler("onPlayerResourceStart", root, requestModList)
 
-local function verifyOptionalModParameters(modInfo)
+addEventHandler("onPlayerQuit", root, function()
+	for i, v in ipairs(loadedPlayers) do
+		if v == source then
+			table.remove(loadedPlayers, i)
+			break
+		end
+	end	
+end)
 
+local function verifyOptionalModParameters(modInfo)
 	local ignoreTXD = modInfo.ignoreTXD or false
 	if (type(ignoreTXD) ~= "boolean") then
 		return false, "ignoreTXD passed must be true/false"
@@ -384,12 +508,30 @@ local function verifyOptionalModParameters(modInfo)
 		return false, "lodDistance passed must be a number"
 	end
 
+	local filteringEnabled = modInfo.filteringEnabled or true
+	if type(filteringEnabled) ~= "boolean" then
+		return false, "filteringEnabled passed must be true/false"
+	end
+
+	local alphaTransparency = modInfo.alphaTransparency or false
+	if type(alphaTransparency) ~= "boolean" then
+		return false, "alphaTransparency passed must be true/false"
+	end
+
+	local modelPhysical = modInfo.modelPhysical or nil
+	if (modelPhysical ~= nil) and type(modelPhysical) ~= "number" then
+		return false, "modelPhysical passed must be a number"
+	end
+
 	modInfo.ignoreTXD = ignoreTXD
 	modInfo.ignoreDFF = ignoreDFF
 	modInfo.ignoreCOL = ignoreCOL
 	modInfo.metaDownloadFalse = metaDownloadFalse
 	modInfo.disableAutoFree = disableAutoFree
 	modInfo.lodDistance = lodDistance
+	modInfo.filteringEnabled = filteringEnabled
+	modInfo.alphaTransparency = alphaTransparency
+	modInfo.modelPhysical = modelPhysical
 
 	return modInfo
 end
@@ -420,13 +562,15 @@ function addExternalMods_IDFilenames_Legacy(sourceResName, list)
 	return true
 end
 
---This function exists to avoid too many exports calls of the function below from
---external resources to add mods from those
---With this one you can just pass a table of mods and it calls that function for you
+--[[
+	This function exists to avoid too many exports calls of the function below from
+	external resources to add mods from those
+	With this one you can just pass a table of mods and it calls that function for you
 
---This is an async function: mods in the list will be added gradually and if you have too many it may take several seconds.
---So don't assume that they've all been added immediately after the function returns true.
---Also, please note that if any of your mods has an invalid parameter, an error will be output and it won't get added.
+	This is an async function: mods in the list will be added gradually and if you have too many it may take several seconds.
+	So don't assume that they've all been added immediately after the function returns true.
+	Also, please note that if any of your mods has an invalid parameter, an error will be output and it won't get added.
+]]
 function addExternalMods_IDFilenames(list, onFinishEvent) --[Exported]
 	if not sourceResource then
 		return false, "This command is meant to be called from outside resource '"..resName.."'"
@@ -481,8 +625,10 @@ function addExternalMods_IDFilenames(list, onFinishEvent) --[Exported]
 	return true
 end
 
---The difference between this function and addExternalMod_CustomFilenames is that
---you pass a folder path in 'path' and it will search for ID.dff ID.txd etc
+--[[
+	The difference between this function and addExternalMod_CustomFilenames is that
+	you pass a folder path in 'path' and it will search for ID.dff ID.txd etc
+]]
 function addExternalMod_IDFilenames(...) --[Exported]
 	--Backwards compatibility for old arguments
 	local args = {...}
@@ -490,6 +636,12 @@ function addExternalMod_IDFilenames(...) --[Exported]
 	local fromResourceName
 	if type(args[1]) == "string" then
 		outputDebugString("You are passing deprecated variables to addExternalMod_IDFilenames. Update your code to use the new format.", 2)
+		--[[
+			BEFORE:
+			elementType, id, base_id, name, path,
+			ignoreTXD, ignoreDFF, ignoreCOL, metaDownloadFalse, disableAutoFree, lodDistance,
+			fromResourceName
+		]]
 		modInfo = {
 			elementType = args[1], id = args[2], base_id = args[3], name = args[4],
 			path = args[5], ignoreTXD = args[6], ignoreDFF = args[7], ignoreCOL = args[8],
@@ -586,6 +738,7 @@ function addExternalMod_IDFilenames(...) --[Exported]
 	modList[elementType][#modList[elementType]+1] = {
 		id=id, base_id=base_id, path=path, name=name,
 		metaDownloadFalse=modInfo.metaDownloadFalse, disableAutoFree=modInfo.disableAutoFree, lodDistance=modInfo.lodDistance,
+		filteringEnabled=modInfo.filteringEnabled, alphaTransparency=modInfo.alphaTransparency, modelPhysical=modInfo.modelPhysical, 
 		srcRes=sourceResName
 	}
 
@@ -593,18 +746,15 @@ function addExternalMod_IDFilenames(...) --[Exported]
 
 	--Don't spam chat/debug when mass adding/removing mods
 	if isTimer(prevent_addrem_spam.addtimer) then killTimer(prevent_addrem_spam.addtimer) end
-	
 	if not prevent_addrem_spam.add[sourceResName] then prevent_addrem_spam.add[sourceResName] = {} end
 	table.insert(prevent_addrem_spam.add[sourceResName], true)
-
 	prevent_addrem_spam.addtimer = setTimer(function()
 		for rname,mods in pairs(prevent_addrem_spam.add) do
-			outputDebugString("Added "..#mods.." mods from "..rname, 0, 136, 255, 89)
+			outputDebugString("Added "..#mods.." mods from "..rname, 4, 136, 255, 89)
 			prevent_addrem_spam.add[rname] = nil
 			sendModListAllPlayers("addExternalMod_IDFilenames")
 		end
 	end, SEND_DELAY, 1)
-
 	return true
 end
 
@@ -627,13 +777,15 @@ function addExternalMods_CustomFileNames_Legacy(sourceResName, list)
 	return true
 end
 
---This function exists to avoid too many exports calls of the function below from
---external resources to add mods from those
---With this one you can just pass a table of mods and it calls that function for you
+--[[
+	This function exists to avoid too many exports calls of the function below from
+	external resources to add mods from those
+	With this one you can just pass a table of mods and it calls that function for you
 
---This is an async function: mods in the list will be added gradually and if you have too many it may take several seconds.
---So don't assume that they've all been added immediately after the function returns true.
---Also, please note that if any of your mods has an invalid parameter, an error will be output and it won't get added.
+	This is an async function: mods in the list will be added gradually and if you have too many it may take several seconds.
+	So don't assume that they've all been added immediately after the function returns true.
+	Also, please note that if any of your mods has an invalid parameter, an error will be output and it won't get added.
+]]
 function addExternalMods_CustomFileNames(list, onFinishEvent) --[Exported]
 	if not sourceResource then
 		return false, "This command is meant to be called from outside resource '"..resName.."'"
@@ -688,8 +840,10 @@ function addExternalMods_CustomFileNames(list, onFinishEvent) --[Exported]
 	return true
 end
 
---The difference between this function and addExternalMod_IDFilenames is that
---you pass directly individual file paths for dff, txd and col files
+--[[
+	The difference between this function and addExternalMod_IDFilenames is that
+	you pass directly individual file paths for dff, txd and col files
+]]
 function addExternalMod_CustomFilenames(...) --[Exported]
 	--Backwards compatibility for old arguments
 	local args = {...}
@@ -697,6 +851,12 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 	local fromResourceName
 	if type(args[1]) == "string" then
 		outputDebugString("You are passing deprecated variables to addExternalMod_CustomFilenames. Update your code to use the new format.", 2)
+		--[[
+			BEFORE:
+			elementType, id, base_id, name, path_dff, path_txd, path_col,
+			ignoreTXD, ignoreDFF, ignoreCOL, metaDownloadFalse, disableAutoFree, lodDistance,
+			fromResourceName
+		]]
 		modInfo = {
 			elementType = args[1], id = args[2], base_id = args[3], name = args[4],
 			path_dff = args[5], path_txd = args[6], path_col = args[7],
@@ -759,9 +919,7 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 	modInfo = modInfo2
 
 	local paths = {}
-
 	if (modInfo.ignoreDFF == false) then
-
 		local path_dff = modInfo.path_dff or modInfo.dff
 		if type(path_dff) ~= "string" then
 			return false, "Missing/Invalid 'path_dff' passed: "..tostring(path_dff)
@@ -770,11 +928,9 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 			path_dff = ":"..sourceResName.."/"..path_dff
 		end
 		paths.dff = path_dff
-
 	end
 
 	if (modInfo.ignoreTXD == false) then
-
 		local path_txd = modInfo.path_txd or modInfo.txd
 		if type(path_txd) ~= "string" then
 			return false, "Missing/Invalid 'path_txd' passed: "..tostring(path_txd)
@@ -783,11 +939,9 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 			path_txd = ":"..sourceResName.."/"..path_txd
 		end
 		paths.txd = path_txd
-
 	end
 
 	if (modInfo.ignoreCOL == false and elementType == "object") then
-
 		local path_col = modInfo.path_col or modInfo.col
 		if type(path_col) ~= "string" then
 			return false, "Missing/Invalid 'path_col' passed: "..tostring(path_col)
@@ -795,7 +949,6 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 		if string.sub(path_col, 1,1) ~= ":" then
 			path_col = ":"..sourceResName.."/"..path_col
 		end
-
 		paths.col = path_col
 	end
 
@@ -814,20 +967,22 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 			end
 		end
 	end
+
 	for k, path2 in pairs(paths) do
 		if (not fileExists(path2)) and ((ENABLE_NANDOCRYPT) and not fileExists(path2..NANDOCRYPT_EXT)) then
 			if ((not modInfo.ignoreTXD) and k == "txd")
 			or ((not modInfo.ignoreDFF) and k == "dff")
 			or ((not modInfo.ignoreCOL) and elementType == "object" and k == "col") then
-
 				return false, "File doesn't exist: '"..tostring(path2).."'"
 			end
 		end
 	end
+	
 	--Save mod in list
 	modList[elementType][#modList[elementType]+1] = {
 		id=id, base_id=base_id, path=paths, name=name,
 		metaDownloadFalse=modInfo.metaDownloadFalse, disableAutoFree=modInfo.disableAutoFree, lodDistance=modInfo.lodDistance,
+		filteringEnabled=modInfo.filteringEnabled, alphaTransparency=modInfo.alphaTransparency, modelPhysical=modInfo.modelPhysical, 
 		srcRes=sourceResName
 	}
 
@@ -835,13 +990,11 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 
 	--Don't spam chat/debug when mass adding/removing mods
 	if isTimer(prevent_addrem_spam.addtimer) then killTimer(prevent_addrem_spam.addtimer) end
-	
 	if not prevent_addrem_spam.add[sourceResName] then prevent_addrem_spam.add[sourceResName] = {} end
 	table.insert(prevent_addrem_spam.add[sourceResName], true)
-
 	prevent_addrem_spam.addtimer = setTimer(function()
 		for rname,mods in pairs(prevent_addrem_spam.add) do
-			outputDebugString("Added "..#mods.." mods from "..rname, 0, 136, 255, 89)
+			outputDebugString("Added "..#mods.." mods from "..rname, 4, 136, 255, 89)
 			prevent_addrem_spam.add[rname] = nil
 			sendModListAllPlayers("addExternalMod_CustomFilenames")
 		end
@@ -849,8 +1002,10 @@ function addExternalMod_CustomFilenames(...) --[Exported]
 	return true
 end
 
---This is an async function: mods in the list of IDs will be removed gradually and if you have too many it may take several seconds.
---So don't assume that they've all been removed immediately after the function returns true.
+--[[
+	This is an async function: mods in the list of IDs will be removed gradually and if you have too many it may take several seconds.
+	So don't assume that they've all been removed immediately after the function returns true.
+]]
 function removeExternalMods(list, onFinishEvent) --[Exported]
 	if not sourceResource then
 		return false, "This command is meant to be called from outside resource '"..resName.."'"
@@ -917,11 +1072,12 @@ function removeExternalMod(id) --[Exported]
 						table.insert(prevent_addrem_spam.rem[sourceResName], true)
 						prevent_addrem_spam.remtimer = setTimer(function()
 							for rname,mods2 in pairs(prevent_addrem_spam.rem) do
-								outputDebugString("Removed "..#mods2.." mods from "..rname, 0, 211, 255, 89)
+								outputDebugString("Removed "..#mods2.." mods from "..rname, 4, 211, 255, 89)
 								prevent_addrem_spam.rem[rname] = nil
 								sendModListAllPlayers("removeExternalMod")
 							end
 						end, SEND_DELAY, 1)
+						
 						return true
 					else
 						return false, "Mod with ID "..id.." doesn't have a source resource"
@@ -933,7 +1089,7 @@ function removeExternalMod(id) --[Exported]
 	return false, "No mod with ID "..id.." found in modList"
 end
 
-addEventHandler("onDownloadFailed", resourceRoot, function(kick, times, modId, path)
+addEventHandler(resName..":onDownloadFailed", resourceRoot, function(kick, times, modId, path)
     if not client then return end
 	outputServerLog("["..resName.."] "..getPlayerName(client).." failed to download '"..path.."' (#"..modId..") "..times.." times"..(kick and ", kicking." or "."))
     if kick == true then

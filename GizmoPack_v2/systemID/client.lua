@@ -2,18 +2,23 @@
     @Author: https://github.com/Fernando-A-Rocha (Edit by THEGizmo)
 ]]--
 
+resName = "GizmoPack_v2"
+
 --Events other resources can handle:
-addEvent("onModListReceived", true)
-addEvent("onModFileDownloaded", true)
+addEvent(resName..":onModListReceived", true)
+addEvent(resName..":onModFileDownloaded", true)
+
 --Internal events:
-addEvent("receiveModList", true)
+addEvent(resName..":receiveModList", true)
 
 allocated_ids = {} --[new id] = allocated id
 local model_elements = {} --[allocated id] = {dff,txd[,col]}
 local received_modlist --[element type] = {...}
 local waiting_queue = {} --[element] = { func num, args }
 local freeIdTimers = {} --[new id] = timer
-local FREE_ID_DELAY = 5000 --ms
+local FREE_ID_DELAY = 10000 --ms
+local FREE_ID_DELAY_STEP = 500 --ms
+local currFreeIdDelay = FREE_ID_DELAY
 
 --downloadFile queue
 local fileDLQueue = {}
@@ -24,6 +29,9 @@ local awaitingSetModel = {}
 
 --Nandocrypt specific
 local nc_waiting = {}
+
+--Vehicle specific
+local update_properties = {} --[element] = timer
 
 function getExtension(fn)
 	return "."..(fn:match "[^.]+$")
@@ -41,7 +49,7 @@ function getModList() --[Exported - Client Version]
 	return received_modlist
 end
 
-function getModDataFromID(id) -- [Exported - Client Version]
+function getModDataFromID(id) --[Exported - Client Version]
 	if not tonumber(id) then return end
 	if not received_modlist then
 		--outputDebugString("getModDataFromID: Client hasn't received modList yet", 1)
@@ -78,12 +86,8 @@ function allocateNewMod(element, elementType, id)
 	--/!\ only this function doesn't accept 'player'
 	--as type so we need to change that to 'ped'
 	local elementType2 = elementType
-	if elementType2 == "player" then
-		elementType2 = "ped"
-	end
-	if elementType2 == "pickup" then
-		elementType2 = "object"
-	end
+	if elementType2 == "player" then elementType2 = "ped" end
+	if elementType2 == "pickup" then elementType2 = "object" end
 
 	local paths = foundMod.paths
 	if type(paths) ~= "table" then
@@ -95,8 +99,10 @@ function allocateNewMod(element, elementType, id)
 	if not allocated_id then
 		return false, "Failed: engineRequestModel('"..elementType2.."', "..tostring(baseId)..")"
 	end
+
 	--Do the mod loading magic
 	local txdmodel,dffmodel,colmodel = nil,nil,nil
+
 	local txdPath = paths.txd or nil
 	if txdPath then
 		if not fileExists(txdPath) then
@@ -143,11 +149,15 @@ function allocateNewMod(element, elementType, id)
 	end
 
 	local lodDistance = foundMod.lodDistance
+	local modelPhysical = foundMod.modelPhysical
+
 	if (ENABLE_NANDOCRYPT) then
 		if type(ncDecrypt) ~= "function" then
 			return false, "Failed: NandoCrypt decrypt function is not loaded"
 		end
+
 		local hasOneNandoCrypted = false
+
 		local paths2 = {}
 		if txdPath and getExtension(txdPath) == NANDOCRYPT_EXT then
 			table.insert(paths2, {"txd", txdPath})
@@ -158,6 +168,7 @@ function allocateNewMod(element, elementType, id)
 		if colPath and getExtension(colPath) == NANDOCRYPT_EXT  then
 			table.insert(paths2, {"col", colPath})
 		end
+
 		for k, v in pairs(paths2) do
 			local t,path_ = unpack(v)
 			if not nc_waiting[allocated_id] then
@@ -187,9 +198,9 @@ function allocateNewMod(element, elementType, id)
 							local data2 = nc_waiting[allocated_id][t2]
 							local model
 							if t2 == "txd" then
-								model = engineLoadTXD(data2)
+								model = engineLoadTXD(data2, foundMod.filteringEnabled)
 								if model then
-									if not engineImportTXD(model,allocated_id) then
+									if not engineImportTXD(model, allocated_id) then
 										oneFailed = true
 									end
 								else
@@ -198,7 +209,7 @@ function allocateNewMod(element, elementType, id)
 							elseif t2 == "dff" then
 								model = engineLoadDFF(data2, allocated_id)
 								if model then
-									if not engineReplaceModel(model,allocated_id,true) then
+									if not engineReplaceModel(model, allocated_id, foundMod.alphaTransparency) then
 										oneFailed = true
 									end
 								else
@@ -219,11 +230,10 @@ function allocateNewMod(element, elementType, id)
 								table.insert(model_elements[allocated_id], model)
 							end
 						end
-
 						if oneFailed then
 							for _, model in ipairs(model_elements[allocated_id]) do
 								if isElement(model) then
-									destroyElement(model) --free memory
+									destroyElement(model) -- free memory
 								end
 							end
 							model_elements[allocated_id] = nil
@@ -232,6 +242,10 @@ function allocateNewMod(element, elementType, id)
 							--Lod Distance
 							if lodDistance then
 								engineSetModelLODDistance(allocated_id, lodDistance)
+							end
+							--Model Physical
+							if modelPhysical then
+								engineSetModelPhysicalPropertiesGroup(allocated_id, modelPhysical)
 							end
 						end
 						--print("Finished", "A-AID "..allocated_id, "Total files "..nc_waiting[allocated_id]["total"])
@@ -255,20 +269,20 @@ function allocateNewMod(element, elementType, id)
 	local txdworked,dffworked,colworked = false,false,false
 
 	if txdPath then
-		local txd = engineLoadTXD(txdPath)
+		local txd = engineLoadTXD(txdPath, foundMod.filteringEnabled)
 		if txd then
 			txdmodel = txd
-			if engineImportTXD(txd,allocated_id) then
+			if engineImportTXD(txd, allocated_id) then
 				txdworked = true
 			end
 		end
 	end
-
+	
 	if dffPath then
 		local dff = engineLoadDFF(dffPath, allocated_id)
 		if dff then
 			dffmodel = dff
-			if engineReplaceModel(dff,allocated_id,true) then
+			if engineReplaceModel(dff, allocated_id, foundMod.alphaTransparency) then
 				dffworked = true
 			end
 		end
@@ -290,6 +304,7 @@ function allocateNewMod(element, elementType, id)
 	)
 	then
 		engineResetModelLODDistance(allocated_id)
+		engineRestoreModelPhysicalPropertiesGroup(allocated_id)
 		engineFreeModel(allocated_id)
 		if txdmodel then destroyElement(txdmodel) end --free memory
 		if dffmodel then destroyElement(dffmodel) end --free memory
@@ -305,21 +320,23 @@ function allocateNewMod(element, elementType, id)
 		if (colPath) then
 			reason = reason.."COL: "..(colworked and "success" or "fail").." "
 		end
-
 		return false, reason
 	end
+
 	--Lod Distance
 	if lodDistance then
-		print(id, "lodDistance", lodDistance)
 		engineSetModelLODDistance(allocated_id, lodDistance)
+	end
+
+	--Model Physical
+	if modelPhysical then
+		engineSetModelPhysicalPropertiesGroup(allocated_id, modelPhysical)
 	end
 	
 	if isTimer(freeIdTimers[id]) then killTimer(freeIdTimers[id]) end
-
 	allocated_ids[id] = allocated_id
-	
 	model_elements[allocated_id] = {} --Save model elements for destroying on deallocation
-	
+
 	if dffmodel and isElement(dffmodel) then
 		table.insert(model_elements[allocated_id], dffmodel)
 	end
@@ -329,7 +346,6 @@ function allocateNewMod(element, elementType, id)
 	if colmodel and isElement(colmodel) then
 		table.insert(model_elements[allocated_id], colmodel)
 	end
-
 	return allocated_id
 end
 
@@ -384,13 +400,48 @@ function setElementCustomModel(element, elementType, id)
 				return false, reason2
 			end
 		end
-		setElementModel(element, allocated_id)
+		if getElementType(element) == "pickup" then
+			setPickupType(element, 3, allocated_id)
+		else
+			setElementModel(element, allocated_id)
+			if getElementType(element)=="vehicle" then
+				if isTimer(update_properties[element]) then killTimer(update_properties[element]) end
+				update_properties[element] = setTimer(function()
+					if isElement(element) then
+						if DATANAME_VEH_HANDLING then
+							local handling = getElementData(element, DATANAME_VEH_HANDLING)
+							if handling then
+								for property, value in pairs(handling) do
+									setVehicleHandling(element, property, value)
+								end
+							end
+						end
+						if DATANAME_VEH_UPGRADES then
+							local upgrades = getElementData(element, DATANAME_VEH_UPGRADES)
+							if upgrades then
+								for upgradeName, value in pairs(upgrades) do
+									addVehicleUpgrade(element, value)
+								end
+							end
+						end
+						if DATANAME_VEH_PAINTJOB then
+							local paintjob = getElementData(element, DATANAME_VEH_PAINTJOB)
+							if paintjob then
+								setVehiclePaintjob(element, paintjob)
+							end
+						end
+					end
+					update_properties[element] = nil
+				end, 1000, 1)
+			end
+		end
 	end
 	return true
 end
 
 function freeAllocatedID(allocated_id, id, theEvent)
 	engineResetModelLODDistance(allocated_id)
+	engineRestoreModelPhysicalPropertiesGroup(allocated_id)
 	local worked = engineFreeModel(allocated_id)
 	for k, element in pairs(model_elements[allocated_id] or {}) do
 		if isElement(element) then
@@ -405,6 +456,10 @@ end
 
 function startFreeingMod(id2, checkStreamedIn, theEvent)
 	if isTimer(freeIdTimers[id2]) then killTimer(freeIdTimers[id2]) end
+	currFreeIdDelay = currFreeIdDelay - FREE_ID_DELAY_STEP
+	if currFreeIdDelay < FREE_ID_DELAY_STEP then
+		currFreeIdDelay = FREE_ID_DELAY
+	end
 	freeIdTimers[id2] = setTimer(function(id, en)
 		local allocated_id = allocated_ids[id]
 		if not allocated_id then return end
@@ -428,7 +483,8 @@ function startFreeingMod(id2, checkStreamedIn, theEvent)
 			freeAllocatedID(allocated_id, id, en)
 		end
 		freeIdTimers[id] = nil
-	end, FREE_ID_DELAY, 1, id2, theEvent)
+		currFreeIdDelay = currFreeIdDelay + FREE_ID_DELAY_STEP
+	end, currFreeIdDelay, 1, id2, theEvent)
 end
 
 function freeModIfUnused(id2)
@@ -464,8 +520,7 @@ function forceFreeAllocated(id, immediate) --[Exported]
 	return "FREED_LATER"
 end
 
---(1) updateElementOnDataChange
-function updateElementOnDataChange(source, theKey, oldValue, newValue)
+function updateElementOnDataChange(source, theKey, oldValue, newValue) --(1) updateElementOnDataChange
 	if not isElement(source) then return end
 	local et = getElementType(source)
 	local modEt
@@ -511,8 +566,7 @@ function updateElementOnDataChange(source, theKey, oldValue, newValue)
 end
 addEventHandler("onClientElementDataChange", root, function(theKey, oldValue, newValue) updateElementOnDataChange(source, theKey, oldValue, newValue) end)
 
---(2) updateStreamedInElement
-function updateStreamedInElement(source)
+function updateStreamedInElement(source) --(2) updateStreamedInElement
 	if not isElement(source) then return end
 	local et = getElementType(source)
 	if not isElementTypeSupported(et) then
@@ -537,8 +591,7 @@ function updateStreamedInElement(source)
 end
 addEventHandler("onClientElementStreamIn", root, function() updateStreamedInElement(source) end)
 
---(3) updateStreamedOutElement
-function updateStreamedOutElement(source)
+function updateStreamedOutElement(source) --(3) updateStreamedOutElement
 	if not isElement(source) then return end
 	local et = getElementType(source)
 	if not isElementTypeSupported(et) then
@@ -556,7 +609,7 @@ function updateStreamedOutElement(source)
 		freeModIfUnused(id)
 	end
 end
-addEventHandler("onClientElementStreamOut", root, function() updateStreamedOutElement(source) end)
+addEventHandler( "onClientElementStreamOut", root, function() updateStreamedOutElement(source) end)
 
 function handleDestroyedElement()
 	if not received_modlist then return end
@@ -574,8 +627,7 @@ function handleDestroyedElement()
 end
 addEventHandler("onClientElementDestroy", root, handleDestroyedElement)
 
---Free waiting_queue memory when player leaves
-addEventHandler("onClientPlayerQuit", root, function(reason)
+addEventHandler("onClientPlayerQuit", root, function(reason) --Free waiting_queue memory when player leaves
 	if waiting_queue[source] then
 		waiting_queue[source] = nil
 	end
@@ -599,29 +651,27 @@ function updateElementsInQueue()
 	return true
 end
 
-function updateStreamedElements(thisId)
-	local freed = {}
+function refreshStreamedInElements()
+	--Free all instantly
+	for id, allocated_id in pairs(allocated_ids) do
+		freeAllocatedID(allocated_id, id, "refreshStreamedInElements")
+	end
 	for elementType, name in pairs(dataNames) do
 		for k,el in ipairs(getElementsByType(elementType)) do
 			if isElementStreamedIn(el) then
 				local id = tonumber(getElementData(el, name))
-				if id and not freed[id] then
-					if (not thisId) or (id == thisId) then
-						local found = false
-						for j,mod in pairs(received_modlist[elementType]) do
-							if mod.id == id then
-								found = true
-								break
-							end
+				if id then
+					local found = false
+					for j,mod in pairs(received_modlist[elementType]) do
+						if mod.id == id then
+							found = true
+							break
 						end
-						if not found then --means the mod was removed by a serverside script
-							freed[id] = true
-							startFreeingMod(id, false, "updateStreamedElements => mod gone")
-						else
-							local success, reason = setElementCustomModel(el, elementType, id)
-							if not success then
-								outputDebugString("[updateStreamedElements] Failed setElementCustomModel(source, '"..et.."', "..id.."): "..reason, 1)
-							end
+					end
+					if found then
+						local success, reason = setElementCustomModel(el, elementType, id)
+						if not success then
+							outputDebugString("[refreshStreamedInElements] Failed setElementCustomModel(source, '"..el.."', "..id.."): "..reason, 1)
 						end
 					end
 				end
@@ -649,7 +699,7 @@ function setModFileReady(modId, path)
 				end
 				if all then
 					received_modlist[elementType][k].allReady = true
-					triggerEvent("onModFileDownloaded", localPlayer, mod.id)
+					triggerEvent(resName..":onModFileDownloaded", localPlayer, mod.id)
 					--For set element custom model waiting:
 					for element, id in pairs(awaitingSetModel) do
 						if id == modId then
@@ -676,11 +726,11 @@ function onDownloadFailed(modId, path)
 	fileDLTries[path] = fileDLTries[path] + 1
 	if fileDLTries[path] == DOWNLOAD_MAX_TRIES then
 		if KICK_ON_DOWNLOAD_FAILS then
-			triggerServerEvent("onDownloadFailed", resourceRoot, true, fileDLTries[path], modId, path)
+			triggerServerEvent(resName..":onDownloadFailed", resourceRoot, true, fileDLTries[path], modId, path)
 			return "KICKED"
 		end
     else
-        triggerServerEvent("onDownloadFailed", resourceRoot, false, fileDLTries[path], modId, path)
+        triggerServerEvent(resName..":onDownloadFailed", resourceRoot, false, fileDLTries[path], modId, path)
     end
 	return fileDLTries[path]
 end
@@ -704,7 +754,6 @@ function handleDownloadFinish(fileName, success, requestRes)
 	else
 		setModFileReady(modId, path)
 	end
-
 	if #fileDLQueue >= 1 then
 		setTimer(downloadFirstInQueue, waitDelay, 1)
 	elseif busyDownloading then
@@ -765,7 +814,6 @@ function forceDownloadMod(id) --[Exported]
 			for i, path in ipairs(notReady) do
 				downloadModFile(id, path)
 			end
-
 			return true
 		end
 	end
@@ -789,24 +837,33 @@ end
 
 function receiveModList(modList)
 	received_modlist = modList
-	outputDebugString("Received mod list on client")
+	local count = 0
+	for elementType, mods in pairs(modList) do
+		if not (elementType=="player" or elementType=="pickup") then
+			for _, mod in ipairs(mods) do
+				count = count + 1
+			end
+		end
+	end
+	outputDebugString("Received mod list on client ("..count..")", 4, 115, 236, 255)
+	--outputDebugString("Received mod list on client", 4, 115, 236, 255)
 	--for other resources to handle
-	triggerEvent("onModListReceived", localPlayer, modList)
+	triggerEvent(resName..":onModListReceived", localPlayer, modList)
 	if updateElementsInQueue() then
-		updateStreamedElements()
+		refreshStreamedInElements()
 	end
 end
-addEventHandler("receiveModList", resourceRoot, receiveModList)
+addEventHandler(resName..":receiveModList", resourceRoot, receiveModList)
 
---free memory on stop
-addEventHandler("onClientResourceStop", resourceRoot, function(stoppedResource)
+addEventHandler( "onClientResourceStop", resourceRoot, function(stoppedResource) --free memory on stop
 	for id, allocated_id in pairs(allocated_ids) do
 		engineResetModelLODDistance(allocated_id)
+		engineRestoreModelPhysicalPropertiesGroup(allocated_id)
 		engineFreeModel(allocated_id)
 	end
 end)
 
-addEventHandler("onClientResourceStart", resourceRoot, function(startedResource)
+addEventHandler( "onClientResourceStart", resourceRoot, function(startedResource)
 	--search for streamed in elements with custom model ID datas
 	--these were spawned in another resource and set to using custom model ID
 	--we need to apply the model on them

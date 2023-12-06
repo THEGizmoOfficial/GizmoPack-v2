@@ -704,9 +704,11 @@ function createElementAttributesForSaving(xmlNode, element)
 		xmlNodeSetAttribute(elementNode, "color", toAttribute(colorString))
 	end
 	-- Custom ID
-	if getElementData(element, "baseID") then
-		xmlNodeSetAttribute(elementNode, "model", tostring(getElementData(element, "baseID")))
+	local baseCustomID = getElementData(element, "baseCustomID")
+	if baseCustomID then
+		xmlNodeSetAttribute(elementNode, "model", tostring(baseCustomID))
 	end
+	
 	return elementNode
 end
 

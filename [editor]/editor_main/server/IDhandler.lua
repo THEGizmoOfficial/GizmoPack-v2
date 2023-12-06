@@ -1,26 +1,37 @@
-local getVehicleNameFromModelMTA = getVehicleNameFromModel
 local trailers = {
 	[606]="Baggage Trailer (Covered)", [607]="Baggage Trailer (Uncovered)", [610]="Farm Trailer", [611]="Street Clean - Trailer",
 	[584]="Petrol Trailer", [608]="Stairs", [435]="Cargo Trailer 1", [450]="Cargo Trailer 2", [591]="Cargo Trailer 3"
 }
 
-function getVehicleNameFromModel(ID)
-	if not ID then return "" end
-	local name = getVehicleNameFromModelMTA(ID) or ""
+local resourceName = "GizmoPack_v2"
+local dataNameVehicle = exports[resourceName]:getDataNameFromType("vehicle")
+local getVehicleNameFromModelMTA = getVehicleNameFromModel
+
+function getVehicleNameFromModel(id, element)
+	id = getElementData(element, dataNameVehicle) or id
+	if not id then return "" end
+	local isCustom, mod, customElementType = exports[resourceName]:isCustomModID(id)
+	if isCustom then
+		return mod.name
+	end
+	local name = getVehicleNameFromModelMTA(id) or ""
 	if #name > 0 then return name end
-	return trailers[ID] or ""
+	return trailers[id] or ""
 end
 
 -- gets a friendly name from a category ID
 local nameFromCategoryID = {
-	objectID = function(ID, element) -- Edit to Custom ID
-		return getObjectNameFromModel ( tonumber(ID), element )
+	skinID = function(ID, element)
+		return getPedNameFromModel(tonumber(ID), element)
 	end,
-	vehicleID = function(ID)
-		return getVehicleNameFromModel ( tonumber(ID) )
+	objectID = function(ID, element)
+		return getObjectNameFromModel(tonumber(ID), element)
+	end,
+	vehicleID = function(ID, element)
+		return getVehicleNameFromModel(tonumber(ID), element)
 	end,
 	weaponID = function(ID)
-		return getWeaponNameFromID ( tonumber(ID) )
+		return getWeaponNameFromID(tonumber(ID))
 	end,
 	markerType = function(ID)
 		return ID
@@ -36,28 +47,28 @@ local nameFromCategoryID = {
 }
 
 -- assigns a new unique ID to an element
-function assignID ( theElement )
+function assignID(theElement)
 	local creatorResource = edf.edfGetCreatorResource(theElement)
 	if creatorResource == edf.res then
-		creatorResource = thisResource
+		creatorResource = resource
 	end
 
-	local elementType = getElementType( theElement )
+	local elementType = getElementType(theElement)
 	local elementDefinition = loadedEDF[creatorResource].elements[elementType]
-	local elementID = getElementID( theElement )
+	local elementID = getElementID(theElement)
 
 	-- if it doesn't have an ID or it isn't unique,
-	if not ( elementID and getElementByID( elementID ) == theElement ) then
+	if not (elementID and getElementByID(elementID) == theElement) then
 		-- prepare the ID string. Append the element type first,
 		local idString = elementType
 
 		-- then all category-based properties' values' names,
 		if elementDefinition then
-			for dataField, dataDefinition in pairs( elementDefinition.data ) do
+			for dataField, dataDefinition in pairs(elementDefinition.data) do
 				local nameGetter = nameFromCategoryID[dataDefinition.datatype]
 				if nameGetter then
 					local dataValue = edf.edfGetElementProperty(theElement, dataField)
-					local valueName = nameGetter(dataValue, theElement) -- Edit to Custom ID
+					local valueName = nameGetter(dataValue, theElement)
 					if valueName then
 						idString = idString .. " ("..tostring(valueName)..")"
 					end
@@ -69,11 +80,11 @@ function assignID ( theElement )
 		local i = 1
 		while true do
 			local newID = idString .. " ("..i..")"
-			if getElementByID ( newID ) == false then
-				setElementID( theElement, newID )
-				setElementData( theElement, "id", newID )
-				setElementData( theElement, "me:ID", newID )
-				setElementData( theElement, "me:autoID", true )
+			if getElementByID(newID) == false then
+				setElementID(theElement, newID)
+				setElementData(theElement, "id", newID)
+				setElementData(theElement, "me:ID", newID)
+				setElementData(theElement, "me:autoID", true)
 				break
 			else
 				i = i + 1

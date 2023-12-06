@@ -51,3 +51,4 @@
 * **THEGizmo | [THEGizmoOfficial](https://github.com/THEGizmoOfficial) (Modeler, główny założyciel projektu)**
 * **XeN | [XeNikk](https://github.com/XeNikk) (Programista, wydawca edytora tekstur, pomoc w projekcie)**
 * **Nando | [Fernando Rocha](https://github.com/Fernando-A-Rocha) (Programista, twórca systemu mta-add-models)**
+* **[Współautorzy zasobów MTA:SA](https://github.com/multitheftauto/mtasa-resources)**

@@ -58,6 +58,7 @@
 	<!-- ID assignment handling code -->
 	<script src="server/IDhandler.lua" type="server" /> <!-- Edit to Custom ID -->
 	<script src="server/getObjectNameFromModel.lua" type="server" /> <!-- Edit to Custom ID -->
+	<script src="server/getPedNameFromModel.lua" type="server" /> <!-- Edit to Custom ID -->
 
 	<!-- EDF interface code -->
 	<script src="client/elementcreation.lua" type="client" />

@@ -14262,7 +14262,7 @@ local objectNames = {
 local resourceName = "GizmoPack_v2"
 local dataNameObject = exports[resourceName]:getDataNameFromType("object")
 
-function getObjectNameFromModel ( id, element )
+function getObjectNameFromModel(id, element)
 	id = getElementData(element, dataNameObject) or id
 	local isCustom, mod = exports[resourceName]:isCustomModID(id)
 	if isCustom then

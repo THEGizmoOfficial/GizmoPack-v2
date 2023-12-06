@@ -11,7 +11,9 @@ function canUseTool(player)
 end
 
 local EDITOR_GUI_XML_GROUP_NAMES = {
-    ["objects"] = "GizmoPack v2"
+    ["objects"] = "GizmoPack v2",
+    ["vehicles"] = "GizmoPack v2",
+    ["skins"] = "GizmoPack v2",
 }
 
 local waitingEditorStop = nil
@@ -49,6 +51,8 @@ end
 
 local function updateEditorGUIFiles()
     local OBJECTS_PATH = ":editor_gui/client/browser/objects.xml"
+    local VEHICLES_PATH = ":editor_gui/client/browser/vehicles.xml"
+    local SKINS_PATH = ":editor_gui/client/browser/skins.xml"
 
     local groupNames = {}
     if not EDITOR_GUI_XML_GROUP_NAMES then
@@ -57,9 +61,17 @@ local function updateEditorGUIFiles()
     if not EDITOR_GUI_XML_GROUP_NAMES["objects"] then
         return false, "The editor GUI object group name is not defined."
     end
+    if not EDITOR_GUI_XML_GROUP_NAMES["vehicles"] then
+        return false, "The editor GUI vehicles group name is not defined."
+    end
+    if not EDITOR_GUI_XML_GROUP_NAMES["skins"] then
+        return false, "The editor GUI skins group name is not defined."
+    end
     groupNames["objects"] = EDITOR_GUI_XML_GROUP_NAMES["objects"]
+    groupNames["vehicles"] = EDITOR_GUI_XML_GROUP_NAMES["vehicles"]
+    groupNames["skins"] = EDITOR_GUI_XML_GROUP_NAMES["skins"]
 
-    if not fileExists(OBJECTS_PATH) then
+    if not (fileExists(OBJECTS_PATH) and fileExists(VEHICLES_PATH) and fileExists(SKINS_PATH)) then
         return false, "The editor GUI files could not be found."
     end
 
@@ -69,7 +81,9 @@ local function updateEditorGUIFiles()
     end
 
     local modsList = {
-        ["objects"] = {}
+        ["objects"] = {},
+        ["vehicles"] = {},
+        ["skins"] = {}
     }
 
     for elementType, mods in pairs(allMods) do
@@ -90,6 +104,10 @@ local function updateEditorGUIFiles()
 
             if elementType == "object" then
                 table.insert(modsList["objects"], {id = modID, base_id = modBaseID, name = modName})
+            elseif elementType == "vehicle" then
+                table.insert(modsList["vehicles"], {id = modID, base_id = modBaseID, name = modName})
+            elseif elementType == "ped" then
+                table.insert(modsList["skins"], {id = modID, base_id = modBaseID, name = modName})
             end
         end
     end
@@ -98,6 +116,12 @@ local function updateEditorGUIFiles()
         
         local path = OBJECTS_PATH
         
+        if theType == "vehicles" then
+            path = VEHICLES_PATH
+        elseif theType == "skins" then
+            path = SKINS_PATH
+        end
+
         local xmlRoot = xmlLoadFile(path)
         if not xmlRoot then
             return false, "Failed to load file: "..path

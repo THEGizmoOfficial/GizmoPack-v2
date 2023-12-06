@@ -107,8 +107,8 @@ end
 
 function isElementTypeSupported(et)
 	local found
-	for type,_ in pairs(dataNames) do
-		if et == type then
+	for type2,_ in pairs(dataNames) do
+		if et == type2 then
 			found = true
 			break
 		end

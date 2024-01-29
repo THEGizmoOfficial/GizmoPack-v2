@@ -1,5 +1,5 @@
 <meta>
-    <info author="THEGizmo, XeN, Fernando" name="GizmoPack v2 to system mta-add-models" version="2.1.8" />
+    <info author="THEGizmo, XeN, Fernando" name="GizmoPack v2 to system mta-add-models" version="2.5.4" />
 
     <min_mta_version client="1.6.0-9.22204.0" server="1.6.0-9.22204.0"></min_mta_version>
 
@@ -289,6 +289,44 @@
     <file src="models/gizmopack/gp_door_a_6_5.dff.gp" />
     <file src="models/gizmopack/gp_door_a_6_6.dff.gp" />
     <file src="models/gizmopack/gp_door.col.gp" />
+
+    <file src="models/gizmopack/gp_door_b_1_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_1_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_1_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_1_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_1_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_1_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_2_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_3_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_4_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_5_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_1.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_2.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_3.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_4.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_5.dff.gp" />
+    <file src="models/gizmopack/gp_door_b_6_6.dff.gp" />
+    <file src="models/gizmopack/gp_door_b.col.gp" />
     <!--Textures-->
     <file src="textures/1.jpg" />
     <file src="textures/2.jpg" />

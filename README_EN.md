@@ -1,7 +1,7 @@
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://cdn.discordapp.com/attachments/740579816645984266/1099429497352241232/Logo_Original_White_Red_v2.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://cdn.discordapp.com/attachments/740579816645984266/1099431258863456306/Logo_Original_Black_Red_v2.png">
-    <img alt="Shows the logo in a dark version when there is a light theme, and a light version of the logo when there is a dark theme" src="https://cdn.discordapp.com/attachments/740579816645984266/1099429497352241232/Logo_Original_White_Red_v2.png">
+    <source media="(prefers-color-scheme: dark)" srcset="Logos/GizmoPack_v2_Original_White_Red.svg">
+    <source media="(prefers-color-scheme: light)" srcset="Logos/GizmoPack_v2_Original_Black_Red.svg">
+    <img alt="Shows the logo in a dark version when there is a light theme, and a light version of the logo when there is a dark theme" src="Logos/GizmoPack_v2_Original_White_Red.svg">
 </picture>
 
 # GizmoPack v2 - [[MTA:SA](https://multitheftauto.com/)]

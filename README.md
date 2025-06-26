@@ -1,7 +1,7 @@
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="Logos/GizmoPack_v2_Original_White_Red.svg">
-    <source media="(prefers-color-scheme: light)" srcset="Logos/GizmoPack_v2_Original_Black_Red.svg">
-    <img alt="Pokazuje logo w wersji ciemnej gdy jest motyw jasny, a logo jasne gdy jest motyw ciemny" src="Logos/GizmoPack_v2_Original_White_Red.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="Logos/GizmoPack_v2_Original_White_Red.png">
+    <source media="(prefers-color-scheme: light)" srcset="Logos/GizmoPack_v2_Original_Black_Red.png">
+    <img alt="Pokazuje logo w wersji ciemnej gdy jest motyw jasny, a logo jasne gdy jest motyw ciemny" src="Logos/GizmoPack_v2_Original_White_Red.png">
 </picture>
 
 # GizmoPack v2 - [[MTA:SA](https://multitheftauto.com/)]
